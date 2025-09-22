@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/docker/docker/api/types/image"
@@ -26,6 +27,43 @@ func NewClient() (*Client, error) {
 	return &Client{cli: cli}, nil
 }
 
+// parseDockerResponse parses Docker API JSON responses
+func parseDockerResponse(reader io.Reader, onStatus func(string, map[string]interface{}), onError func(string)) error {
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &result); err != nil {
+			continue // Skip non-JSON lines
+		}
+
+		// Check for errors first
+		if errorDetail, exists := result["errorDetail"]; exists {
+			if errorMap, ok := errorDetail.(map[string]interface{}); ok {
+				if message, ok := errorMap["message"].(string); ok {
+					onError(message)
+					return fmt.Errorf("docker operation failed: %s", message)
+				}
+			}
+		}
+
+		if errorMsg, exists := result["error"]; exists {
+			if errorStr, ok := errorMsg.(string); ok {
+				onError(errorStr)
+				return fmt.Errorf("docker operation failed: %s", errorStr)
+			}
+		}
+
+		// Handle status messages
+		if status, exists := result["status"]; exists {
+			if statusStr, ok := status.(string); ok {
+				onStatus(statusStr, result)
+			}
+		}
+	}
+	return scanner.Err()
+}
+
 func (c *Client) PullImage(ctx context.Context, imageName string) error {
 	fmt.Printf("📥 Pulling: %s\n", imageName)
 
@@ -35,43 +73,29 @@ func (c *Client) PullImage(ctx context.Context, imageName string) error {
 	}
 	defer reader.Close()
 
-	// Parse JSON stream and show only important messages
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Parse JSON line
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			continue // Skip non-JSON lines
-		}
-
-		// Show only important status messages
-		if status, exists := result["status"]; exists {
-			if statusStr, ok := status.(string); ok {
-				switch statusStr {
-				case "Downloading":
-					if progress, hasProgress := result["progress"]; hasProgress {
-						if progressStr, ok := progress.(string); ok {
-							fmt.Printf("\r📥 %s: %s", statusStr, progressStr)
-						}
+	// Use helper function for JSON parsing
+	return parseDockerResponse(reader,
+		func(status string, result map[string]interface{}) {
+			switch status {
+			case "Downloading":
+				if progress, hasProgress := result["progress"]; hasProgress {
+					if progressStr, ok := progress.(string); ok {
+						fmt.Printf("\r📥 %s: %s", status, progressStr)
 					}
-				case "Pull complete", "Download complete":
-					fmt.Printf("\r✅ %s\n", statusStr)
-				case "Status":
-					if message, hasMessage := result["message"]; hasMessage {
-						if msgStr, ok := message.(string); ok {
-							fmt.Printf("ℹ️  %s\n", msgStr)
-						}
+				}
+			case "Pull complete", "Download complete":
+				fmt.Printf("\r✅ %s\n", status)
+			case "Status":
+				if message, hasMessage := result["message"]; hasMessage {
+					if msgStr, ok := message.(string); ok {
+						fmt.Printf("ℹ️  %s\n", msgStr)
 					}
 				}
 			}
-		}
-	}
-
-	// Clear progress line
-	fmt.Printf("\r%-80s\r", "")
-	return scanner.Err()
+		},
+		func(errorMsg string) {
+			fmt.Printf("❌ Pull error: %s\n", errorMsg)
+		})
 }
 
 func (c *Client) TagImage(ctx context.Context, sourceImage, targetImage string) error {
@@ -91,40 +115,14 @@ func (c *Client) PushImage(ctx context.Context, imageName string) error {
 	}
 	defer reader.Close()
 
-	// Parse JSON stream and catch errors
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Parse JSON line
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			// If not JSON, print directly
-			fmt.Println(line)
-			continue
-		}
-
-		// Return if error exists
-		if errorDetail, exists := result["errorDetail"]; exists {
-			if errorMap, ok := errorDetail.(map[string]interface{}); ok {
-				if message, ok := errorMap["message"].(string); ok {
-					return fmt.Errorf("push failed: %s", message)
-				}
-			}
-		}
-
-		// Also check error field
-		if errorMsg, exists := result["error"]; exists {
-			if errorStr, ok := errorMsg.(string); ok {
-				return fmt.Errorf("push failed: %s", errorStr)
-			}
-		}
-
-		// Print normal progress message
-		fmt.Println(line)
-	}
-
-	return scanner.Err()
+	// Use helper function for JSON parsing
+	return parseDockerResponse(reader,
+		func(status string, result map[string]interface{}) {
+			fmt.Println(status) // Print all status messages
+		},
+		func(errorMsg string) {
+			fmt.Printf("❌ Push error: %s\n", errorMsg)
+		})
 }
 
 func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, password string) error {
@@ -159,64 +157,36 @@ func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, pas
 	}
 	defer reader.Close()
 
-	// Parse JSON stream and show only important messages
-	scanner := bufio.NewScanner(reader)
+	// Use helper function for JSON parsing
 	lastProgress := ""
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Parse JSON line
-		var result map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			continue // Skip non-JSON lines
-		}
-
-		// Return if error exists
-		if errorDetail, exists := result["errorDetail"]; exists {
-			if errorMap, ok := errorDetail.(map[string]interface{}); ok {
-				if message, ok := errorMap["message"].(string); ok {
-					return fmt.Errorf("push failed: %s", message)
-				}
-			}
-		}
-
-		// Also check error field
-		if errorMsg, exists := result["error"]; exists {
-			if errorStr, ok := errorMsg.(string); ok {
-				return fmt.Errorf("push failed: %s", errorStr)
-			}
-		}
-
-		// Show only important status messages
-		if status, exists := result["status"]; exists {
-			if statusStr, ok := status.(string); ok {
-				switch statusStr {
-				case "Pushing":
-					if progress, hasProgress := result["progress"]; hasProgress {
-						if progressStr, ok := progress.(string); ok {
-							currentProgress := fmt.Sprintf("📤 Pushing: %s", progressStr)
-							if currentProgress != lastProgress {
-								fmt.Printf("\r%s", currentProgress)
-								lastProgress = currentProgress
-							}
+	err = parseDockerResponse(reader,
+		func(status string, result map[string]interface{}) {
+			switch status {
+			case "Pushing":
+				if progress, hasProgress := result["progress"]; hasProgress {
+					if progressStr, ok := progress.(string); ok {
+						currentProgress := fmt.Sprintf("📤 Pushing: %s", progressStr)
+						if currentProgress != lastProgress {
+							fmt.Printf("\r%s", currentProgress)
+							lastProgress = currentProgress
 						}
 					}
-				case "Pushed":
-					fmt.Printf("\r✅ Pushed successfully\n")
-				default:
-					if strings.Contains(statusStr, "digest:") {
-						fmt.Printf("✅ %s\n", statusStr)
-					}
+				}
+			case "Pushed":
+				fmt.Printf("\r✅ Pushed successfully\n")
+			default:
+				if strings.Contains(status, "digest:") {
+					fmt.Printf("✅ %s\n", status)
 				}
 			}
-		}
-	}
+		},
+		func(errorMsg string) {
+			fmt.Printf("❌ Push error: %s\n", errorMsg)
+		})
 
 	// Clear progress line
 	fmt.Printf("\r%-80s\r", "")
-
-	return scanner.Err()
+	return err
 }
 
 func (c *Client) LoginToRegistry(ctx context.Context, username, password, registryURL string) error {

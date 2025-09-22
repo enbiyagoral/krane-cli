@@ -4,12 +4,14 @@ Copyright © 2025 Krane CLI menbiyagoral@gmail.com
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"krane/pkg/k8s"
 	"krane/pkg/utils"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -78,24 +80,38 @@ func printTable(images []string) {
 	fmt.Printf("\nTotal: %d unique images\n", len(images))
 }
 
+// ImageList represents the structure for JSON output
+type ImageList struct {
+	Images []string `json:"images"`
+	Total  int      `json:"total"`
+}
+
 func printJSON(images []string) {
-	fmt.Println("{")
-	fmt.Println(`  "images": [`)
-	for i, image := range images {
-		if i == len(images)-1 {
-			fmt.Printf(`    "%s"`, image)
-		} else {
-			fmt.Printf(`    "%s",`, image)
-		}
-		fmt.Println()
+	imageList := ImageList{
+		Images: images,
+		Total:  len(images),
 	}
-	fmt.Println("  ]")
-	fmt.Println("}")
+
+	jsonData, err := json.MarshalIndent(imageList, "", "  ")
+	if err != nil {
+		fmt.Printf("Error marshaling JSON: %v\n", err)
+		return
+	}
+
+	fmt.Println(string(jsonData))
 }
 
 func printYAML(images []string) {
-	fmt.Println("images:")
-	for _, image := range images {
-		fmt.Printf("  - %s\n", image)
+	imageList := ImageList{
+		Images: images,
+		Total:  len(images),
 	}
+
+	yamlData, err := yaml.Marshal(imageList)
+	if err != nil {
+		fmt.Printf("Error marshaling YAML: %v\n", err)
+		return
+	}
+
+	fmt.Println(string(yamlData))
 }
