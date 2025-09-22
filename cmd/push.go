@@ -50,8 +50,7 @@ func runPush() {
 	// 1. Create ECR client
 	ecrClient, err := ecr.NewClient(region)
 	if err != nil {
-		fmt.Printf("❌ Error creating ECR client: %v\n", err)
-		return
+		handleError("Error creating ECR client", err)
 	}
 
 	fmt.Printf("🏷️  ECR Registry: %s\n", ecrClient.GetRegistryURL())
@@ -59,14 +58,12 @@ func runPush() {
 	// 2. Get images from Kubernetes
 	k8sClient, err := k8s.NewClient("")
 	if err != nil {
-		fmt.Printf("❌ Error creating Kubernetes client: %v\n", err)
-		return
+		handleError("Error creating Kubernetes client", err)
 	}
 
 	images, err := k8s.ListPodImages(k8sClient, namespace)
 	if err != nil {
-		fmt.Printf("❌ Error listing pod images: %v\n", err)
-		return
+		handleError("Error listing pod images", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)
@@ -75,26 +72,28 @@ func runPush() {
 	// 3. Create Docker client
 	dockerClient, err := docker.NewClient()
 	if err != nil {
-		fmt.Printf("❌ Error creating Docker client: %v\n", err)
-		return
+		handleError("Error creating Docker client", err)
 	}
 	defer dockerClient.Close()
 
-	// 4. ECR auth token al
+	// 4. Get ECR auth token
 	ctx := context.Background()
 	username, password, err := ecrClient.GetAuthToken(ctx)
 	if err != nil {
-		fmt.Printf("❌ Error getting ECR auth token: %v\n", err)
-		return
+		handleError("Error getting ECR auth token", err)
 	}
 
 	fmt.Println("🔑 ECR authentication successful")
 
 	// 5. Process each image for push
 	for i, image := range uniqueImages {
-		fmt.Printf("\n[%d/%d] Processing: %s\n", i+1, len(uniqueImages), image)
+		fmt.Printf("\n[%d/%d] 📦 Processing: %s\n", i+1, len(uniqueImages), image)
 
-		targetImage, repoName := ecrClient.ConvertImageName(image, repositoryPrefix)
+		targetImage, repoName, err := ecrClient.ConvertImageName(image, repositoryPrefix)
+		if err != nil {
+			fmt.Printf("❌ Failed to convert image name %s: %v\n", image, err)
+			continue
+		}
 
 		if dryRun {
 			fmt.Printf("🔍 DRY RUN: Would push %s -> %s\n", image, targetImage)

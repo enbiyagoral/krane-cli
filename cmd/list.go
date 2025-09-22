@@ -41,8 +41,7 @@ func runList() {
 	// Kubernetes Client
 	client, err := k8s.NewClient("")
 	if err != nil {
-		fmt.Printf("Error creating Kubernetes client: %v\n", err)
-		return
+		handleError("Error creating Kubernetes client", err)
 	}
 
 	namespace := ""
@@ -53,8 +52,7 @@ func runList() {
 	// List pods images
 	images, err := k8s.ListPodImages(client, namespace)
 	if err != nil {
-		fmt.Printf("Error listing pod images: %v\n", err)
-		return
+		handleError("Error listing pod images", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)

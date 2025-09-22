@@ -6,8 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/docker/docker/api/types/image"
@@ -29,7 +27,7 @@ func NewClient() (*Client, error) {
 }
 
 func (c *Client) PullImage(ctx context.Context, imageName string) error {
-	fmt.Printf("Pulling image: %s\n", imageName)
+	fmt.Printf("📥 Pulling: %s\n", imageName)
 
 	reader, err := c.cli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
@@ -37,13 +35,47 @@ func (c *Client) PullImage(ctx context.Context, imageName string) error {
 	}
 	defer reader.Close()
 
-	// Show progress output
-	_, err = io.Copy(os.Stdout, reader)
-	return err
+	// Parse JSON stream and show only important messages
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Parse JSON line
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &result); err != nil {
+			continue // Skip non-JSON lines
+		}
+
+		// Show only important status messages
+		if status, exists := result["status"]; exists {
+			if statusStr, ok := status.(string); ok {
+				switch statusStr {
+				case "Downloading":
+					if progress, hasProgress := result["progress"]; hasProgress {
+						if progressStr, ok := progress.(string); ok {
+							fmt.Printf("\r📥 %s: %s", statusStr, progressStr)
+						}
+					}
+				case "Pull complete", "Download complete":
+					fmt.Printf("\r✅ %s\n", statusStr)
+				case "Status":
+					if message, hasMessage := result["message"]; hasMessage {
+						if msgStr, ok := message.(string); ok {
+							fmt.Printf("ℹ️  %s\n", msgStr)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Clear progress line
+	fmt.Printf("\r%-80s\r", "")
+	return scanner.Err()
 }
 
 func (c *Client) TagImage(ctx context.Context, sourceImage, targetImage string) error {
-	fmt.Printf("Tagging: %s -> %s\n", sourceImage, targetImage)
+	fmt.Printf("🏷️  Tagging: %s -> %s\n", sourceImage, targetImage)
 
 	return c.cli.ImageTag(ctx, sourceImage, targetImage)
 }
@@ -96,7 +128,7 @@ func (c *Client) PushImage(ctx context.Context, imageName string) error {
 }
 
 func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, password string) error {
-	fmt.Printf("Pushing image: %s\n", imageName)
+	fmt.Printf("📤 Pushing: %s\n", imageName)
 
 	// Extract ECR registry domain
 	parts := strings.Split(imageName, "/")
@@ -109,7 +141,7 @@ func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, pas
 		ServerAddress: registryDomain,
 	}
 
-	// Auth config'i JSON olarak encode et
+	// Encode auth config as JSON
 	authConfigBytes, err := json.Marshal(authConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal auth config: %w", err)
@@ -127,7 +159,7 @@ func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, pas
 	}
 	defer reader.Close()
 
-	// Parse JSON stream and catch errors
+	// Parse JSON stream and show only important messages
 	scanner := bufio.NewScanner(reader)
 	lastProgress := ""
 
@@ -137,9 +169,7 @@ func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, pas
 		// Parse JSON line
 		var result map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			// If not JSON, print directly
-			fmt.Println(line)
-			continue
+			continue // Skip non-JSON lines
 		}
 
 		// Return if error exists
@@ -158,35 +188,33 @@ func (c *Client) PushImageWithAuth(ctx context.Context, imageName, username, pas
 			}
 		}
 
-		// Optimize progress output - only print different messages
+		// Show only important status messages
 		if status, exists := result["status"]; exists {
 			if statusStr, ok := status.(string); ok {
-				// Filter messages with progress bar
-				if progress, hasProgress := result["progress"]; hasProgress {
-					if progressStr, ok := progress.(string); ok {
-						currentProgress := fmt.Sprintf("%s: %s", statusStr, progressStr)
-						if currentProgress != lastProgress {
-							fmt.Printf("\r%s", currentProgress)
-							lastProgress = currentProgress
+				switch statusStr {
+				case "Pushing":
+					if progress, hasProgress := result["progress"]; hasProgress {
+						if progressStr, ok := progress.(string); ok {
+							currentProgress := fmt.Sprintf("📤 Pushing: %s", progressStr)
+							if currentProgress != lastProgress {
+								fmt.Printf("\r%s", currentProgress)
+								lastProgress = currentProgress
+							}
 						}
-						continue
+					}
+				case "Pushed":
+					fmt.Printf("\r✅ Pushed successfully\n")
+				default:
+					if strings.Contains(statusStr, "digest:") {
+						fmt.Printf("✅ %s\n", statusStr)
 					}
 				}
-
-				// Print normal status messages (digest, pushed etc.)
-				if statusStr == "Pushed" || strings.Contains(statusStr, "digest:") {
-					fmt.Printf("\r%-80s\n", "") // Clear progress line
-					fmt.Println(line)
-				}
 			}
-		} else {
-			// Print other messages
-			fmt.Println(line)
 		}
 	}
 
-	// Clear last line
-	fmt.Printf("\r%-80s\n", "")
+	// Clear progress line
+	fmt.Printf("\r%-80s\r", "")
 
 	return scanner.Err()
 }

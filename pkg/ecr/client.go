@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -42,6 +43,20 @@ func NewClient(region string) (*Client, error) {
 	}, nil
 }
 
+// validateECRRepositoryName validates ECR repository name according to AWS rules
+func validateECRRepositoryName(name string) error {
+	// ECR repository name must match: (?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*
+	pattern := `^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*$`
+	matched, err := regexp.MatchString(pattern, name)
+	if err != nil {
+		return fmt.Errorf("invalid repository name pattern: %w", err)
+	}
+	if !matched {
+		return fmt.Errorf("repository name '%s' does not match ECR naming rules (lowercase, numbers, dots, dashes, underscores only)", name)
+	}
+	return nil
+}
+
 func (c *Client) GetRegistryURL() string {
 	return fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", c.accountID, c.region)
 }
@@ -78,7 +93,7 @@ func (c *Client) CreateRepository(ctx context.Context, repositoryName string) er
 
 	_, err := c.ecrClient.CreateRepository(ctx, input)
 	if err != nil {
-		// Repository zaten varsa hata verme
+		// Repository already exists, don't return error
 		if strings.Contains(err.Error(), "RepositoryAlreadyExistsException") {
 			fmt.Printf("📦 Repository %s already exists\n", repositoryName)
 			return nil
@@ -90,41 +105,86 @@ func (c *Client) CreateRepository(ctx context.Context, repositoryName string) er
 	return nil
 }
 
-func (c *Client) ConvertImageName(originalImage, prefix string) (string, string) {
-	// docker.io/mongodb/mongodb-community-server:6.0.5-ubi8
-	// -> <account_id>.dkr.ecr.<region>.amazonaws.com/k8s-backup/mongodb-community-server:6.0.5-ubi8
+func (c *Client) ConvertImageName(originalImage, prefix string) (string, string, error) {
+	// Examples:
+	// registry.k8s.io/ingress-nginx/controller:v1.12.3@sha256:abcdef -> k8s-backup/ingress-nginx/controller:v1.12.3
+	// docker.io/library/busybox@sha256:abcdef -> k8s-backup/library/busybox:sha-abcdef
+	// busybox:1.37 -> k8s-backup/busybox:1.37
 
-	parts := strings.Split(originalImage, "/")
-	var imageName, tag string
+	image := originalImage
+	var digest string
 
-	if len(parts) == 1 {
-		// busybox -> busybox:latest
-		imageName = parts[0]
-		tag = "latest"
-	} else {
-		// Get last part and remove tag
-		imageWithTag := parts[len(parts)-1]
-		if strings.Contains(imageWithTag, ":") {
-			nameTag := strings.Split(imageWithTag, ":")
-			imageName = nameTag[0]
-			tag = nameTag[1]
+	// Extract digest if present
+	if at := strings.Index(image, "@sha256:"); at != -1 {
+		digest = image[at+len("@sha256:"):]
+		image = image[:at]
+	}
+
+	// Split into parts
+	parts := strings.Split(image, "/")
+
+	// First part might be registry: contains dots, colons, or 'localhost'
+	startIdx := 0
+	if len(parts) > 1 {
+		first := parts[0]
+		if strings.Contains(first, ".") || strings.Contains(first, ":") || first == "localhost" {
+			startIdx = 1
+		}
+	}
+
+	// If only 2 parts and first is registry, use the second one
+	if len(parts) == 2 && startIdx == 1 {
+		startIdx = 1
+	}
+
+	// Repository path (excluding registry)
+	repoParts := parts[startIdx:]
+	if len(repoParts) == 0 {
+		// Single name only (e.g., "busybox")
+		repoParts = []string{image}
+	}
+
+	// Extract tag from last part
+	last := repoParts[len(repoParts)-1]
+	name := last
+	tag := ""
+	if idx := strings.LastIndex(last, ":"); idx != -1 {
+		name = last[:idx]
+		tag = last[idx+1:]
+	}
+
+	// Update last part
+	repoParts[len(repoParts)-1] = name
+
+	// Determine tag: use latest if none, or deterministic short digest if digest present
+	if tag == "" {
+		if digest != "" {
+			short := digest
+			if len(short) > 12 {
+				short = short[:12]
+			}
+			tag = "sha-" + short
 		} else {
-			imageName = imageWithTag
 			tag = "latest"
 		}
 	}
 
-	// Remove SHA digest
-	if strings.Contains(tag, "@sha256") {
-		tag = strings.Split(tag, "@")[0]
-		if tag == "" {
-			tag = "latest"
-		}
+	// ECR repo name: prefix + full path (excluding registry)
+	repoPath := strings.Join(repoParts, "/")
+
+	// Normalize repository name for ECR (lowercase, replace invalid chars)
+	normalizedPath := strings.ToLower(repoPath)
+	normalizedPath = strings.ReplaceAll(normalizedPath, ":", "-")
+	normalizedPath = strings.ReplaceAll(normalizedPath, "@", "-")
+
+	fullRepoName := fmt.Sprintf("%s/%s", prefix, normalizedPath)
+
+	// Validate repository name
+	if err := validateECRRepositoryName(fullRepoName); err != nil {
+		return "", "", err
 	}
 
-	// Prefix ekle
-	fullRepoName := fmt.Sprintf("%s/%s", prefix, imageName)
 	ecrImage := fmt.Sprintf("%s/%s:%s", c.GetRegistryURL(), fullRepoName, tag)
 
-	return ecrImage, fullRepoName
+	return ecrImage, fullRepoName, nil
 }
