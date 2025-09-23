@@ -64,7 +64,7 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 	// 1. Create ECR client
 	ecrClient, err := ecr.NewClient(opts.Region)
 	if err != nil {
-		handleError("Error creating ECR client", err)
+		return fmt.Errorf("creating ECR client: %w", err)
 	}
 
 	fmt.Printf("🏷️  ECR Registry: %s\n", ecrClient.GetRegistryURL())
@@ -72,21 +72,25 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 	// 2. Get images from Kubernetes
 	k8sClient, err := k8s.NewClient("")
 	if err != nil {
-		handleError("Error creating Kubernetes client", err)
+		return fmt.Errorf("creating Kubernetes client: %w", err)
 	}
 
 	// Determine allNamespaces flag: if namespace is empty, use all.
 	allNamespaces := strings.TrimSpace(opts.Namespace) == ""
+	// Warn if namespace filters are provided but not listing across all namespaces
+	if !allNamespaces && (len(opts.IncludeNamespaces) > 0 || len(opts.ExcludeNamespaces) > 0) {
+		fmt.Printf("⚠️ include/exclude namespaces flags only apply when listing across all namespaces; with --namespace they are ignored.\n")
+	}
 	images, err := k8s.ListPodImagesFiltered(k8sClient, allNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 	if err != nil {
-		handleError("Error listing pod images", err)
+		return fmt.Errorf("listing pod images: %w", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)
 	// Apply image include/exclude filters
 	filtered, err := utils.FilterImages(uniqueImages, opts.IncludePatterns, opts.ExcludePatterns)
 	if err != nil {
-		handleError("Invalid include/exclude patterns", err)
+		return fmt.Errorf("invalid include/exclude patterns: %w", err)
 	}
 	uniqueImages = filtered
 	fmt.Printf("📦 Found %d unique images\n", len(uniqueImages))
@@ -94,7 +98,7 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 	// 3. Get ECR auth token
 	username, password, err := ecrClient.GetAuthToken(ctx)
 	if err != nil {
-		handleError("Error getting ECR auth token", err)
+		return fmt.Errorf("getting ECR auth token: %w", err)
 	}
 
 	fmt.Println("🔑 ECR authentication successful")

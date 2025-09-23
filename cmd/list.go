@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -60,7 +61,7 @@ func runList(ctx context.Context, opts *ListOptions) error {
 	// Kubernetes Client
 	client, err := k8s.NewClient("")
 	if err != nil {
-		handleError("Error creating Kubernetes client", err)
+		return fmt.Errorf("creating Kubernetes client: %w", err)
 	}
 
 	// If namespace is empty, behave like all-namespaces
@@ -69,10 +70,15 @@ func runList(ctx context.Context, opts *ListOptions) error {
 		effectiveAllNamespaces = true
 	}
 
+	// Warn if namespace filters are provided but not listing across all namespaces
+	if !effectiveAllNamespaces && (len(opts.IncludeNamespaces) > 0 || len(opts.ExcludeNamespaces) > 0) {
+		fmt.Fprintf(os.Stderr, "⚠️ include/exclude namespaces flags only apply when --all-namespaces is used; with --namespace they are ignored.\n")
+	}
+
 	if opts.ShowSources {
 		infos, err := k8s.ListPodImagesWithSource(client, effectiveAllNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 		if err != nil {
-			handleError("Error listing pod images", err)
+			return fmt.Errorf("listing pod images: %w", err)
 		}
 		// Apply image filters
 		var images []string
@@ -82,7 +88,7 @@ func runList(ctx context.Context, opts *ListOptions) error {
 		images = utils.RemoveDuplicates(images)
 		filtered, err := utils.FilterImages(images, opts.IncludePatterns, opts.ExcludePatterns)
 		if err != nil {
-			handleError("Invalid include/exclude patterns", err)
+			return fmt.Errorf("invalid include/exclude patterns: %w", err)
 		}
 		// Group by image
 		grouped := groupSourcesByImage(infos, filtered)
@@ -116,14 +122,14 @@ func runList(ctx context.Context, opts *ListOptions) error {
 	// List pod images with namespace filters
 	images, err := k8s.ListPodImagesFiltered(client, effectiveAllNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 	if err != nil {
-		handleError("Error listing pod images", err)
+		return fmt.Errorf("listing pod images: %w", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)
 	// Apply image include/exclude filters
 	filtered, err := utils.FilterImages(uniqueImages, opts.IncludePatterns, opts.ExcludePatterns)
 	if err != nil {
-		handleError("Invalid include/exclude patterns", err)
+		return fmt.Errorf("invalid include/exclude patterns: %w", err)
 	}
 	uniqueImages = filtered
 	sort.Strings(uniqueImages)

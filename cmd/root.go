@@ -4,6 +4,7 @@ Copyright © 2025 Krane CLI menbiyagoral@gmail.com
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -29,6 +30,8 @@ Examples:
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -36,12 +39,12 @@ Examples:
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func init() {
-	// Attach subcommands
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newPushCmd())
 }

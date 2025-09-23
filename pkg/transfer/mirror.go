@@ -22,7 +22,7 @@ func Mirror(ctx context.Context, srcRef, dstRef, ecrUsername, ecrPassword, platf
 	dstOpt := crane.WithAuth(dstAuth)
 
 	// Options build-up
-	opts := []crane.Option{srcOpt, dstOpt}
+	opts := []crane.Option{srcOpt, dstOpt, crane.WithContext(ctx)}
 	if platform != "" {
 		if strings.Contains(platform, ",") {
 			return fmt.Errorf("multiple platforms not yet supported: %s", platform)
