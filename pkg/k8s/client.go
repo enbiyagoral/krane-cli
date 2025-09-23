@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -209,6 +210,7 @@ func compileNamespaceMatchers(patterns []string) ([]namespaceMatcher, error) {
 		}
 		re, err := regexp.Compile(p)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ invalid namespace regex '%s': %v. Falling back to prefix match.\n", p, err)
 			matchers = append(matchers, namespaceMatcher{isRegex: false, prefix: p})
 			continue
 		}

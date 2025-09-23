@@ -18,6 +18,7 @@ import (
 
 // PushOptions holds flag values for the push command
 type PushOptions struct {
+	AllNamespaces     bool
 	Region            string
 	RepositoryPrefix  string
 	Namespace         string
@@ -39,12 +40,13 @@ func newPushCmd() *cobra.Command {
     
 This command discovers images from pods (optionally filtered by namespaces and patterns),
 creates ECR repositories if needed, and performs a registry-to-registry mirror preserving
-multi-arch manifests. Optionally restrict to a single platform with --platforms.`,
+multi-arch manifests. Optionally restrict to a single platform with --platform.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPush(cmd.Context(), opts)
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.AllNamespaces, "all-namespaces", false, "List images from all namespaces")
 	cmd.Flags().StringVar(&opts.Region, "region", "eu-west-1", "AWS region for ECR")
 	cmd.Flags().StringVar(&opts.RepositoryPrefix, "prefix", "k8s-backup", "ECR repository prefix/namespace")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
@@ -75,13 +77,15 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 		return fmt.Errorf("creating Kubernetes client: %w", err)
 	}
 
-	// Determine allNamespaces flag: if namespace is empty, use all.
-	allNamespaces := strings.TrimSpace(opts.Namespace) == ""
-	// Warn if namespace filters are provided but not listing across all namespaces
-	if !allNamespaces && (len(opts.IncludeNamespaces) > 0 || len(opts.ExcludeNamespaces) > 0) {
-		fmt.Printf("⚠️ include/exclude namespaces flags only apply when listing across all namespaces; with --namespace they are ignored.\n")
+	effectiveAllNamespaces := opts.AllNamespaces
+	if strings.TrimSpace(opts.Namespace) == "" {
+		effectiveAllNamespaces = true
 	}
-	images, err := k8s.ListPodImagesFiltered(k8sClient, allNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
+
+	if !effectiveAllNamespaces && (len(opts.IncludeNamespaces) > 0 || len(opts.ExcludeNamespaces) > 0) {
+		fmt.Printf("⚠️ include/exclude namespaces flags only apply when --all-namespaces is used; with --namespace they are ignored.\n")
+	}
+	images, err := k8s.ListPodImagesFiltered(k8sClient, effectiveAllNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 	if err != nil {
 		return fmt.Errorf("listing pod images: %w", err)
 	}
