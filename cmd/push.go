@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 
-	"krane/pkg/docker"
 	"krane/pkg/ecr"
 	"krane/pkg/k8s"
+	"krane/pkg/transfer"
 	"krane/pkg/utils"
 
 	"github.com/spf13/cobra"
@@ -69,14 +69,7 @@ func runPush() {
 	uniqueImages := utils.RemoveDuplicates(images)
 	fmt.Printf("📦 Found %d unique images\n", len(uniqueImages))
 
-	// 3. Create Docker client
-	dockerClient, err := docker.NewClient()
-	if err != nil {
-		handleError("Error creating Docker client", err)
-	}
-	defer dockerClient.Close()
-
-	// 4. Get ECR auth token
+	// 3. Get ECR auth token
 	ctx := context.Background()
 	username, password, err := ecrClient.GetAuthToken(ctx)
 	if err != nil {
@@ -106,33 +99,14 @@ func runPush() {
 			continue
 		}
 
-		// Pull -> Tag -> Push
-		if err := processImage(ctx, dockerClient, image, targetImage, username, password); err != nil {
-			fmt.Printf("❌ Failed to process %s: %v\n", image, err)
+		// Mirror source image to ECR preserving manifest lists
+		if err := transfer.Mirror(ctx, image, targetImage, username, password); err != nil {
+			fmt.Printf("❌ Mirror failed %s -> %s: %v\n", image, targetImage, err)
 			continue
 		}
 
-		fmt.Printf("✅ Successfully pushed: %s\n", targetImage)
+		fmt.Printf("✅ Successfully pushed (mirrored): %s\n", targetImage)
 	}
 
 	fmt.Println("\n🎉 Push operation completed!")
-}
-
-func processImage(ctx context.Context, client *docker.Client, sourceImage, targetImage, username, password string) error {
-	// 1. Pull original image
-	if err := client.PullImage(ctx, sourceImage); err != nil {
-		return fmt.Errorf("pull failed: %w", err)
-	}
-
-	// 2. Tag for ECR
-	if err := client.TagImage(ctx, sourceImage, targetImage); err != nil {
-		return fmt.Errorf("tag failed: %w", err)
-	}
-
-	// 3. Push to ECR with authentication
-	if err := client.PushImageWithAuth(ctx, targetImage, username, password); err != nil {
-		return fmt.Errorf("push failed: %w", err)
-	}
-
-	return nil
 }
