@@ -33,6 +33,7 @@ var (
 	repositoryPrefix string
 	namespace        string
 	dryRun           bool
+	platforms        string
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	pushCmd.Flags().StringVar(&repositoryPrefix, "prefix", "k8s-backup", "ECR repository prefix/namespace")
 	pushCmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
 	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be pushed without actually pushing")
+	pushCmd.Flags().StringVar(&platforms, "platforms", "", "Limit mirror to a single platform (e.g. linux/amd64)")
 }
 
 func runPush() {
@@ -99,8 +101,8 @@ func runPush() {
 			continue
 		}
 
-		// Mirror source image to ECR preserving manifest lists
-		if err := transfer.Mirror(ctx, image, targetImage, username, password); err != nil {
+		// Mirror source image to ECR preserving manifest lists (or single platform if provided)
+		if err := transfer.Mirror(ctx, image, targetImage, username, password, platforms); err != nil {
 			fmt.Printf("❌ Mirror failed %s -> %s: %v\n", image, targetImage, err)
 			continue
 		}
