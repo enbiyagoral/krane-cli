@@ -4,6 +4,7 @@ Copyright © 2025 Krane CLI menbiyagoral@gmail.com
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -16,43 +17,46 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var (
-	allNamespaces     bool
-	outputFormat      string
-	includeNamespaces []string
-	excludeNamespaces []string
-	includePatterns   []string
-	excludePatterns   []string
-	showSources       bool
-)
+// ListOptions holds flag values for the list command
+type ListOptions struct {
+	AllNamespaces     bool
+	Namespace         string
+	Format            string
+	IncludeNamespaces []string
+	ExcludeNamespaces []string
+	IncludePatterns   []string
+	ExcludePatterns   []string
+	ShowSources       bool
+}
 
-// listCmd represents the list command
-var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all container images from Kubernetes pods",
-	Long: `List all container images running in Kubernetes pods.
+// newListCmd constructs the list command with its own options
+func newListCmd() *cobra.Command {
+	opts := &ListOptions{Format: "table"}
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all container images from Kubernetes pods",
+		Long: `List all container images running in Kubernetes pods.
     
 This command scans all pods (or specified namespace) and extracts
 the container images including init containers.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		runList()
-	},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(cmd.Context(), opts)
+		},
+	}
+
+	cmd.Flags().BoolVar(&opts.AllNamespaces, "all-namespaces", false, "List images from all namespaces")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
+	cmd.Flags().StringVarP(&opts.Format, "format", "o", "table", "Output format (table, json, yaml)")
+	cmd.Flags().StringSliceVar(&opts.IncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().StringSliceVar(&opts.ExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().StringSliceVar(&opts.IncludePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().StringSliceVar(&opts.ExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().BoolVar(&opts.ShowSources, "show-sources", false, "Show source kind/name and namespace for each image")
+
+	return cmd
 }
 
-func init() {
-	rootCmd.AddCommand(listCmd)
-
-	listCmd.Flags().BoolVar(&allNamespaces, "all-namespaces", false, "List images from all namespaces")
-	listCmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
-	listCmd.Flags().StringVarP(&outputFormat, "format", "o", "table", "Output format (table, json, yaml)")
-	listCmd.Flags().StringSliceVar(&includeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
-	listCmd.Flags().StringSliceVar(&excludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
-	listCmd.Flags().StringSliceVar(&includePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
-	listCmd.Flags().StringSliceVar(&excludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
-	listCmd.Flags().BoolVar(&showSources, "show-sources", false, "Show source kind/name and namespace for each image")
-}
-
-func runList() {
+func runList(ctx context.Context, opts *ListOptions) error {
 	// Kubernetes Client
 	client, err := k8s.NewClient("")
 	if err != nil {
@@ -60,13 +64,13 @@ func runList() {
 	}
 
 	// If namespace is empty, behave like all-namespaces
-	effectiveAllNamespaces := allNamespaces
-	if strings.TrimSpace(namespace) == "" {
+	effectiveAllNamespaces := opts.AllNamespaces
+	if strings.TrimSpace(opts.Namespace) == "" {
 		effectiveAllNamespaces = true
 	}
 
-	if showSources {
-		infos, err := k8s.ListPodImagesWithSource(client, effectiveAllNamespaces, namespace, includeNamespaces, excludeNamespaces)
+	if opts.ShowSources {
+		infos, err := k8s.ListPodImagesWithSource(client, effectiveAllNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 		if err != nil {
 			handleError("Error listing pod images", err)
 		}
@@ -76,7 +80,7 @@ func runList() {
 			images = append(images, info.Image)
 		}
 		images = utils.RemoveDuplicates(images)
-		filtered, err := utils.FilterImages(images, includePatterns, excludePatterns)
+		filtered, err := utils.FilterImages(images, opts.IncludePatterns, opts.ExcludePatterns)
 		if err != nil {
 			handleError("Invalid include/exclude patterns", err)
 		}
@@ -96,7 +100,7 @@ func runList() {
 			})
 		}
 		// Print with sources depending on format
-		switch outputFormat {
+		switch opts.Format {
 		case "table":
 			printTableGrouped(grouped)
 		case "json":
@@ -106,25 +110,25 @@ func runList() {
 		default:
 			printTableGrouped(grouped)
 		}
-		return
+		return nil
 	}
 
 	// List pod images with namespace filters
-	images, err := k8s.ListPodImagesFiltered(client, effectiveAllNamespaces, namespace, includeNamespaces, excludeNamespaces)
+	images, err := k8s.ListPodImagesFiltered(client, effectiveAllNamespaces, opts.Namespace, opts.IncludeNamespaces, opts.ExcludeNamespaces)
 	if err != nil {
 		handleError("Error listing pod images", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)
 	// Apply image include/exclude filters
-	filtered, err := utils.FilterImages(uniqueImages, includePatterns, excludePatterns)
+	filtered, err := utils.FilterImages(uniqueImages, opts.IncludePatterns, opts.ExcludePatterns)
 	if err != nil {
 		handleError("Invalid include/exclude patterns", err)
 	}
 	uniqueImages = filtered
 	sort.Strings(uniqueImages)
 
-	switch outputFormat {
+	switch opts.Format {
 	case "table":
 		printTable(uniqueImages)
 	case "json":
@@ -134,6 +138,7 @@ func runList() {
 	default:
 		printTable(uniqueImages)
 	}
+	return nil
 }
 
 func printTable(images []string) {
