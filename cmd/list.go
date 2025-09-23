@@ -44,10 +44,10 @@ func init() {
 
 	listCmd.Flags().BoolVar(&allNamespaces, "all-namespaces", false, "List images from all namespaces")
 	listCmd.Flags().StringVarP(&outputFormat, "format", "o", "table", "Output format (table, json, yaml)")
-	listCmd.Flags().StringSliceVar(&includeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix/regex)")
-	listCmd.Flags().StringSliceVar(&excludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix/regex)")
-	listCmd.Flags().StringSliceVar(&includePatterns, "include", nil, "Only include images matching these patterns (prefix/regex)")
-	listCmd.Flags().StringSliceVar(&excludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix/regex)")
+	listCmd.Flags().StringSliceVar(&includeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
+	listCmd.Flags().StringSliceVar(&excludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
+	listCmd.Flags().StringSliceVar(&includePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	listCmd.Flags().StringSliceVar(&excludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
 	listCmd.Flags().BoolVar(&showSources, "show-sources", false, "Show source kind/name and namespace for each image")
 }
 

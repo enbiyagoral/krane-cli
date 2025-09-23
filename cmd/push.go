@@ -35,7 +35,7 @@ var (
 	repositoryPrefix      string
 	namespace             string
 	dryRun                bool
-	platforms             string
+	platform              string
 	pushIncludeNamespaces []string
 	pushExcludeNamespaces []string
 	pushIncludePatterns   []string
@@ -49,11 +49,11 @@ func init() {
 	pushCmd.Flags().StringVar(&repositoryPrefix, "prefix", "k8s-backup", "ECR repository prefix/namespace")
 	pushCmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
 	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be pushed without actually pushing")
-	pushCmd.Flags().StringVar(&platforms, "platforms", "", "Limit mirror to a single platform (e.g. linux/amd64)")
-	pushCmd.Flags().StringSliceVar(&pushIncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix/regex)")
-	pushCmd.Flags().StringSliceVar(&pushExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix/regex)")
-	pushCmd.Flags().StringSliceVar(&pushIncludePatterns, "include", nil, "Only include images matching these patterns (prefix/regex)")
-	pushCmd.Flags().StringSliceVar(&pushExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix/regex)")
+	pushCmd.Flags().StringVarP(&platform, "platform", "p", "", "Limit mirror to a single platform (e.g. linux/amd64). If empty, mirror multi-arch when available.")
+	pushCmd.Flags().StringSliceVar(&pushIncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
+	pushCmd.Flags().StringSliceVar(&pushExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
+	pushCmd.Flags().StringSliceVar(&pushIncludePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	pushCmd.Flags().StringSliceVar(&pushExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
 }
 
 func runPush() {
@@ -120,7 +120,7 @@ func runPush() {
 		}
 
 		// Mirror source image to ECR preserving manifest lists (or single platform if provided)
-		if err := transfer.Mirror(ctx, image, targetImage, username, password, platforms); err != nil {
+		if err := transfer.Mirror(ctx, image, targetImage, username, password, platform); err != nil {
 			fmt.Printf("❌ Mirror failed %s -> %s: %v\n", image, targetImage, err)
 			continue
 		}
