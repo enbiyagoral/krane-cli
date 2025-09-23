@@ -24,6 +24,7 @@ type PushOptions struct {
 	Namespace         string
 	DryRun            bool
 	Platform          string
+	SkipExisting      bool
 	IncludeNamespaces []string
 	ExcludeNamespaces []string
 	IncludePatterns   []string
@@ -56,6 +57,7 @@ multi-arch manifests. Optionally restrict to a single platform with --platform.`
 	cmd.Flags().StringSliceVar(&opts.ExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
 	cmd.Flags().StringSliceVar(&opts.IncludePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
 	cmd.Flags().StringSliceVar(&opts.ExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().BoolVar(&opts.SkipExisting, "skip-existing", false, "Skip mirroring if the target ECR tag already exists")
 
 	return cmd
 }
@@ -126,6 +128,24 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 		if err := ecrClient.CreateRepository(ctx, repoName); err != nil {
 			fmt.Printf("❌ Failed to create repository %s: %v\n", repoName, err)
 			continue
+		}
+
+		// If skipping existing, check whether tag exists already in ECR
+		if opts.SkipExisting {
+			// Extract tag from targetImage (after last ':')
+			tag := ""
+			if idx := strings.LastIndex(targetImage, ":"); idx != -1 {
+				tag = targetImage[idx+1:]
+			}
+			if tag != "" {
+				exists, err := ecrClient.ImageTagExists(ctx, repoName, tag)
+				if err != nil {
+					fmt.Printf("⚠️  Could not check existing tag for %s:%s: %v\n", repoName, tag, err)
+				} else if exists {
+					fmt.Printf("⏭️  Skipping (tag exists): %s\n", targetImage)
+					continue
+				}
+			}
 		}
 
 		// Mirror source image to ECR preserving manifest lists (or single platform if provided)

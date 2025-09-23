@@ -3,6 +3,7 @@ package ecr
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
@@ -93,8 +95,8 @@ func (c *Client) CreateRepository(ctx context.Context, repositoryName string) er
 
 	_, err := c.ecrClient.CreateRepository(ctx, input)
 	if err != nil {
-		// Repository already exists, don't return error
-		if strings.Contains(err.Error(), "RepositoryAlreadyExistsException") {
+		var already *ecrtypes.RepositoryAlreadyExistsException
+		if errors.As(err, &already) {
 			fmt.Printf("📦 Repository %s already exists\n", repositoryName)
 			return nil
 		}
@@ -187,4 +189,22 @@ func (c *Client) ConvertImageName(originalImage, prefix string) (string, string,
 	ecrImage := fmt.Sprintf("%s/%s:%s", c.GetRegistryURL(), fullRepoName, tag)
 
 	return ecrImage, fullRepoName, nil
+}
+
+// ImageTagExists checks whether a tag exists in the given ECR repository
+func (c *Client) ImageTagExists(ctx context.Context, repositoryName, tag string) (bool, error) {
+	input := &ecr.DescribeImagesInput{
+		RepositoryName: aws.String(repositoryName),
+		Filter:         &ecrtypes.DescribeImagesFilter{TagStatus: ecrtypes.TagStatusTagged},
+		ImageIds:       []ecrtypes.ImageIdentifier{{ImageTag: aws.String(tag)}},
+	}
+	out, err := c.ecrClient.DescribeImages(ctx, input)
+	if err != nil {
+		var rnfe *ecrtypes.RepositoryNotFoundException
+		if errors.As(err, &rnfe) {
+			return false, nil
+		}
+		return false, err
+	}
+	return len(out.ImageDetails) > 0, nil
 }
