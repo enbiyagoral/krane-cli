@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,18 +69,18 @@ func ListPodImagesFiltered(clientset *kubernetes.Clientset, allNamespaces bool, 
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	// Normalize filters to maps for O(1) lookup on exact matches; also support prefix matching.
-	include := normalizePatterns(includeNamespaces)
-	exclude := normalizePatterns(excludeNamespaces)
+	// Compile namespace matchers: regex if derlenebilir, aksi halde prefix
+	incMatchers, _ := compileNamespaceMatchers(includeNamespaces)
+	excMatchers, _ := compileNamespaceMatchers(excludeNamespaces)
 
 	var images []string
 	for _, pod := range pods.Items {
 		ns := pod.Namespace
 		if allNamespaces {
-			if len(include) > 0 && !matchesAny(ns, include) {
+			if len(incMatchers) > 0 && !namespaceMatchesAny(ns, incMatchers) {
 				continue
 			}
-			if len(exclude) > 0 && matchesAny(ns, exclude) {
+			if len(excMatchers) > 0 && namespaceMatchesAny(ns, excMatchers) {
 				continue
 			}
 		}
@@ -114,17 +115,17 @@ func ListPodImagesWithSource(clientset *kubernetes.Clientset, allNamespaces bool
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	include := normalizePatterns(includeNamespaces)
-	exclude := normalizePatterns(excludeNamespaces)
+	incMatchers, _ := compileNamespaceMatchers(includeNamespaces)
+	excMatchers, _ := compileNamespaceMatchers(excludeNamespaces)
 
 	var results []ImageInfo
 	for _, pod := range pods.Items {
 		ns := pod.Namespace
 		if allNamespaces {
-			if len(include) > 0 && !matchesAny(ns, include) {
+			if len(incMatchers) > 0 && !namespaceMatchesAny(ns, incMatchers) {
 				continue
 			}
-			if len(exclude) > 0 && matchesAny(ns, exclude) {
+			if len(excMatchers) > 0 && namespaceMatchesAny(ns, excMatchers) {
 				continue
 			}
 		}
@@ -186,21 +187,39 @@ func ResolveTopOwner(clientset *kubernetes.Clientset, namespace, kind, name stri
 	}
 }
 
-func normalizePatterns(patterns []string) []string {
-	var out []string
+type namespaceMatcher struct {
+	isRegex bool
+	prefix  string
+	re      *regexp.Regexp
+}
+
+func (m namespaceMatcher) match(s string) bool {
+	if m.isRegex {
+		return m.re.MatchString(s)
+	}
+	return strings.HasPrefix(s, m.prefix)
+}
+
+func compileNamespaceMatchers(patterns []string) ([]namespaceMatcher, error) {
+	var matchers []namespaceMatcher
 	for _, p := range patterns {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		out = append(out, p)
+		re, err := regexp.Compile(p)
+		if err != nil {
+			matchers = append(matchers, namespaceMatcher{isRegex: false, prefix: p})
+			continue
+		}
+		matchers = append(matchers, namespaceMatcher{isRegex: true, re: re})
 	}
-	return out
+	return matchers, nil
 }
 
-func matchesAny(s string, patterns []string) bool {
-	for _, p := range patterns {
-		if strings.HasPrefix(s, p) || s == p {
+func namespaceMatchesAny(s string, matchers []namespaceMatcher) bool {
+	for _, m := range matchers {
+		if m.match(s) {
 			return true
 		}
 	}

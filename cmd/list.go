@@ -43,6 +43,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 
 	listCmd.Flags().BoolVar(&allNamespaces, "all-namespaces", false, "List images from all namespaces")
+	listCmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
 	listCmd.Flags().StringVarP(&outputFormat, "format", "o", "table", "Output format (table, json, yaml)")
 	listCmd.Flags().StringSliceVar(&includeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
 	listCmd.Flags().StringSliceVar(&excludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
@@ -58,13 +59,14 @@ func runList() {
 		handleError("Error creating Kubernetes client", err)
 	}
 
-	namespace := ""
-	if !allNamespaces {
-		namespace = "default"
+	// If namespace is empty, behave like all-namespaces
+	effectiveAllNamespaces := allNamespaces
+	if strings.TrimSpace(namespace) == "" {
+		effectiveAllNamespaces = true
 	}
 
 	if showSources {
-		infos, err := k8s.ListPodImagesWithSource(client, allNamespaces, namespace, includeNamespaces, excludeNamespaces)
+		infos, err := k8s.ListPodImagesWithSource(client, effectiveAllNamespaces, namespace, includeNamespaces, excludeNamespaces)
 		if err != nil {
 			handleError("Error listing pod images", err)
 		}
@@ -108,7 +110,7 @@ func runList() {
 	}
 
 	// List pod images with namespace filters
-	images, err := k8s.ListPodImagesFiltered(client, allNamespaces, namespace, includeNamespaces, excludeNamespaces)
+	images, err := k8s.ListPodImagesFiltered(client, effectiveAllNamespaces, namespace, includeNamespaces, excludeNamespaces)
 	if err != nil {
 		handleError("Error listing pod images", err)
 	}
