@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"krane/pkg/ecr"
 	"krane/pkg/k8s"
@@ -19,21 +20,26 @@ import (
 var pushCmd = &cobra.Command{
 	Use:   "push",
 	Short: "Push container images to AWS ECR",
-	Long: `Push all container images from Kubernetes cluster to AWS ECR.
+	Long: `Mirror all container images discovered in the Kubernetes cluster to AWS ECR.
     
-This command pulls images from cluster, creates ECR repositories if needed,
-re-tags them for ECR, and pushes them.`,
+This command discovers images from pods (optionally filtered by namespaces and patterns),
+creates ECR repositories if needed, and performs a registry-to-registry mirror preserving
+multi-arch manifests. Optionally restrict to a single platform with --platforms.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		runPush()
 	},
 }
 
 var (
-	region           string
-	repositoryPrefix string
-	namespace        string
-	dryRun           bool
-	platforms        string
+	region                string
+	repositoryPrefix      string
+	namespace             string
+	dryRun                bool
+	platforms             string
+	pushIncludeNamespaces []string
+	pushExcludeNamespaces []string
+	pushIncludePatterns   []string
+	pushExcludePatterns   []string
 )
 
 func init() {
@@ -44,6 +50,10 @@ func init() {
 	pushCmd.Flags().StringVar(&namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
 	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be pushed without actually pushing")
 	pushCmd.Flags().StringVar(&platforms, "platforms", "", "Limit mirror to a single platform (e.g. linux/amd64)")
+	pushCmd.Flags().StringSliceVar(&pushIncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix/regex)")
+	pushCmd.Flags().StringSliceVar(&pushExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix/regex)")
+	pushCmd.Flags().StringSliceVar(&pushIncludePatterns, "include", nil, "Only include images matching these patterns (prefix/regex)")
+	pushCmd.Flags().StringSliceVar(&pushExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix/regex)")
 }
 
 func runPush() {
@@ -63,12 +73,20 @@ func runPush() {
 		handleError("Error creating Kubernetes client", err)
 	}
 
-	images, err := k8s.ListPodImages(k8sClient, namespace)
+	// Determine allNamespaces flag: if namespace is empty, use all.
+	allNamespaces := strings.TrimSpace(namespace) == ""
+	images, err := k8s.ListPodImagesFiltered(k8sClient, allNamespaces, namespace, pushIncludeNamespaces, pushExcludeNamespaces)
 	if err != nil {
 		handleError("Error listing pod images", err)
 	}
 
 	uniqueImages := utils.RemoveDuplicates(images)
+	// Apply image include/exclude filters
+	filtered, err := utils.FilterImages(uniqueImages, pushIncludePatterns, pushExcludePatterns)
+	if err != nil {
+		handleError("Invalid include/exclude patterns", err)
+	}
+	uniqueImages = filtered
 	fmt.Printf("📦 Found %d unique images\n", len(uniqueImages))
 
 	// 3. Get ECR auth token
