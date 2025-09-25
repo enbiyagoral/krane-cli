@@ -10,31 +10,50 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
-// Mirror copies an image from srcRef to dstRef directly between registries,
-// preserving manifest indexes (multi-arch) when present. No local Docker is used.
-// If platform is non-empty (e.g., "linux/amd64"), mirrors only that platform variant.
-func Mirror(ctx context.Context, srcRef, dstRef, ecrUsername, ecrPassword, platform string) error {
-	// Source auth: default keychain (Docker config, env, etc.). Works for public as anon.
-	srcOpt := crane.WithAuthFromKeychain(authn.DefaultKeychain)
+// Mirror copies an image from source to destination registry using crane.
+// Preserves multi-arch manifests and handles platform-specific copying.
+func Mirror(ctx context.Context, srcRef, dstRef, platform string) error {
+	srcRef = normalizeImageReference(srcRef)
 
-	// Destination auth: ECR basic credentials from token
-	dstAuth := &authn.Basic{Username: ecrUsername, Password: ecrPassword}
-	dstOpt := crane.WithAuth(dstAuth)
-
-	// Options build-up
-	opts := []crane.Option{srcOpt, dstOpt, crane.WithContext(ctx)}
-	if platform != "" {
-		if strings.Contains(platform, ",") {
-			return fmt.Errorf("multiple platforms not yet supported: %s", platform)
-		}
-		parts := strings.SplitN(platform, "/", 2)
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return fmt.Errorf("invalid platform format, expected os/arch: %s", platform)
-		}
-		p := &v1.Platform{OS: parts[0], Architecture: parts[1]}
-		opts = append(opts, crane.WithPlatform(p))
+	opts := []crane.Option{
+		crane.WithAuthFromKeychain(authn.DefaultKeychain),
+		crane.WithContext(ctx),
 	}
 
-	// Perform registry-to-registry copy. crane.Copy preserves manifest lists when present.
+	if platform != "" {
+		if err := validatePlatform(platform); err != nil {
+			return err
+		}
+		parts := strings.SplitN(platform, "/", 2)
+		opts = append(opts, crane.WithPlatform(&v1.Platform{
+			OS:           parts[0],
+			Architecture: parts[1],
+		}))
+	}
+
 	return crane.Copy(srcRef, dstRef, opts...)
+}
+
+// validatePlatform validates the platform format (os/arch).
+func validatePlatform(platform string) error {
+	if strings.Contains(platform, ",") {
+		return fmt.Errorf("multiple platforms not supported: %s", platform)
+	}
+	parts := strings.SplitN(platform, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("invalid platform format, expected os/arch: %s", platform)
+	}
+	return nil
+}
+
+// normalizeImageReference adds docker.io prefix if no registry is specified.
+func normalizeImageReference(ref string) string {
+	parts := strings.SplitN(ref, "/", 2)
+	if len(parts) >= 2 {
+		first := parts[0]
+		if strings.Contains(first, ".") || strings.Contains(first, ":") || first == "localhost" {
+			return ref
+		}
+	}
+	return "docker.io/" + ref
 }

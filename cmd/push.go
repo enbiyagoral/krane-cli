@@ -101,8 +101,8 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 	uniqueImages = filtered
 	fmt.Printf("📦 Found %d unique images\n", len(uniqueImages))
 
-	// 3. Get ECR auth token
-	username, password, err := ecrClient.GetAuthToken(ctx)
+	// 3. Verify ECR authentication
+	_, _, err = ecrClient.GetAuthToken(ctx)
 	if err != nil {
 		return fmt.Errorf("getting ECR auth token: %w", err)
 	}
@@ -149,7 +149,7 @@ func runPush(ctx context.Context, opts *PushOptions) error {
 		}
 
 		// Mirror source image to ECR preserving manifest lists (or single platform if provided)
-		if err := transfer.Mirror(ctx, image, targetImage, username, password, opts.Platform); err != nil {
+		if err := transfer.Mirror(ctx, image, targetImage, opts.Platform); err != nil {
 			fmt.Printf("❌ Mirror failed %s -> %s: %v\n", image, targetImage, err)
 			continue
 		}

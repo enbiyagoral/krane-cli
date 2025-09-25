@@ -12,7 +12,6 @@ A lightweight CLI that discovers container images in your Kubernetes cluster and
   - Namespaces: `--include-namespaces/--exclude-namespaces` (regex if compilable, otherwise prefix)
   - Image names: `--include/--exclude` (regex if compilable, otherwise prefix)
 - Outputs (list): `table`, `json`, `yaml` (grouped view with `--show-sources`)
-- Connects via kubeconfig (`~/.kube/config`)
 
 ---
 
