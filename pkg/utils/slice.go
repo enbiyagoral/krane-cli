@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// RemoveDuplicates removes duplicate strings from a slice while preserving order.
 func RemoveDuplicates(slice []string) []string {
 	keys := make(map[string]bool)
 	var result []string
@@ -18,10 +19,7 @@ func RemoveDuplicates(slice []string) []string {
 	return result
 }
 
-// FilterImages applies include/exclude patterns to image names.
-// Include semantics: if includes non-empty, image must match at least one include (prefix or regex).
-// Exclude semantics: if matches any exclude (prefix or regex), it is removed.
-// Patterns that compile as regex are used as regex; otherwise prefix match is tried.
+// FilterImages applies include/exclude patterns to filter image names.
 func FilterImages(images []string, includes, excludes []string) ([]string, error) {
 	var result []string
 	incMatchers, err := compileMatchers(includes)
@@ -68,6 +66,7 @@ type matcher struct {
 	re      *regexp.Regexp
 }
 
+// match checks if the given string matches this matcher pattern.
 func (m matcher) match(s string) bool {
 	if m.isRegex {
 		return m.re.MatchString(s)
@@ -75,6 +74,7 @@ func (m matcher) match(s string) bool {
 	return strings.HasPrefix(s, m.prefix)
 }
 
+// compileMatchers compiles string patterns into regex or prefix matchers.
 func compileMatchers(patterns []string) ([]matcher, error) {
 	var matchers []matcher
 	for _, p := range patterns {

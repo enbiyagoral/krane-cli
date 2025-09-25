@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+// NewClient creates a new Kubernetes clientset from kubeconfig.
 func NewClient(kubeconfig string) (*kubernetes.Clientset, error) {
 	if kubeconfig == "" {
 		if home := homedir.HomeDir(); home != "" {
@@ -34,6 +35,7 @@ func NewClient(kubeconfig string) (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 
+// ListPodImages lists all container images from pods in the specified namespace.
 func ListPodImages(clientset *kubernetes.Clientset, namespace string) ([]string, error) {
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -56,9 +58,7 @@ func ListPodImages(clientset *kubernetes.Clientset, namespace string) ([]string,
 	return images, nil
 }
 
-// ListPodImagesFiltered lists images from pods with namespace include/exclude semantics.
-// If allNamespaces is true, it lists from all namespaces and applies include/exclude on pod.Namespace.
-// If allNamespaces is false, it lists only from baseNamespace and ignores include/exclude lists.
+// ListPodImagesFiltered lists images from pods with namespace filtering support.
 func ListPodImagesFiltered(clientset *kubernetes.Clientset, allNamespaces bool, baseNamespace string, includeNamespaces, excludeNamespaces []string) ([]string, error) {
 	listNamespace := baseNamespace
 	if allNamespaces {
@@ -96,7 +96,7 @@ func ListPodImagesFiltered(clientset *kubernetes.Clientset, allNamespaces bool, 
 	return images, nil
 }
 
-// ImageInfo contains an image and its source owner information
+// ImageInfo contains an image and its source owner information.
 type ImageInfo struct {
 	Image      string `json:"image" yaml:"image"`
 	Namespace  string `json:"namespace" yaml:"namespace"`
@@ -104,7 +104,7 @@ type ImageInfo struct {
 	SourceName string `json:"sourceName" yaml:"sourceName"`
 }
 
-// ListPodImagesWithSource lists images and includes their owning controller (e.g., Job, ReplicaSet) or Pod if standalone.
+// ListPodImagesWithSource lists images with their source controller information.
 func ListPodImagesWithSource(clientset *kubernetes.Clientset, allNamespaces bool, baseNamespace string, includeNamespaces, excludeNamespaces []string) ([]ImageInfo, error) {
 	listNamespace := baseNamespace
 	if allNamespaces {
@@ -155,8 +155,7 @@ func ListPodImagesWithSource(clientset *kubernetes.Clientset, allNamespaces bool
 	return results, nil
 }
 
-// ResolveTopOwner follows common controller chains to the top-level owner when available.
-// Supported chains: ReplicaSet -> Deployment, Job -> CronJob. Falls back to the provided kind/name.
+// ResolveTopOwner resolves top-level owner controllers for common Kubernetes resources.
 func ResolveTopOwner(clientset *kubernetes.Clientset, namespace, kind, name string) (string, string, error) {
 	switch kind {
 	case "ReplicaSet":
@@ -194,6 +193,7 @@ type namespaceMatcher struct {
 	re      *regexp.Regexp
 }
 
+// match checks if the given string matches this namespace matcher.
 func (m namespaceMatcher) match(s string) bool {
 	if m.isRegex {
 		return m.re.MatchString(s)
@@ -201,6 +201,7 @@ func (m namespaceMatcher) match(s string) bool {
 	return strings.HasPrefix(s, m.prefix)
 }
 
+// compileNamespaceMatchers compiles namespace patterns into regex or prefix matchers.
 func compileNamespaceMatchers(patterns []string) ([]namespaceMatcher, error) {
 	var matchers []namespaceMatcher
 	for _, p := range patterns {
@@ -219,6 +220,7 @@ func compileNamespaceMatchers(patterns []string) ([]namespaceMatcher, error) {
 	return matchers, nil
 }
 
+// namespaceMatchesAny checks if the string matches any of the provided matchers.
 func namespaceMatchesAny(s string, matchers []namespaceMatcher) bool {
 	for _, m := range matchers {
 		if m.match(s) {
