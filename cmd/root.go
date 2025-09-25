@@ -23,10 +23,10 @@ Krane helps you:
 - Convert Docker Hub images to ECR format automatically
 
 Examples:
-  krane list                           # List images in default namespace
-  krane list --all-namespaces          # List images from all namespaces
-  krane push --region eu-west-1        # Push images to ECR in eu-west-1
-  krane push --dry-run                 # Preview what would be pushed`,
+  krane list -n default                # List images in default namespace
+  krane list -A                        # List images from all namespaces
+  krane push -r eu-west-1              # Push images to ECR in eu-west-1
+  krane push -d                        # Preview what would be pushed`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },

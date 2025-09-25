@@ -101,18 +101,18 @@ multi-arch manifests. Optionally restrict to a single platform with --platform.`
 		},
 	}
 
-	cmd.Flags().BoolVar(&opts.AllNamespaces, "all-namespaces", false, "List images from all namespaces")
-	cmd.Flags().StringVar(&opts.Region, "region", "eu-west-1", "AWS region for ECR")
+	cmd.Flags().BoolVarP(&opts.AllNamespaces, "all-namespaces", "A", false, "List images from all namespaces")
+	cmd.Flags().StringVarP(&opts.Region, "region", "r", "eu-west-1", "AWS region for ECR")
 	cmd.Flags().StringVar(&opts.RepositoryPrefix, "prefix", "krane", "ECR repository prefix/namespace")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Kubernetes namespace to filter (default: all)")
-	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Show what would be pushed without actually pushing")
+	cmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "", "Kubernetes namespace to filter (default: all)")
+	cmd.Flags().BoolVarP(&opts.DryRun, "dry-run", "d", false, "Show what would be pushed without actually pushing")
 	cmd.Flags().StringVarP(&opts.Platform, "platform", "p", "", "Limit mirror to a single platform (e.g. linux/amd64). If empty, mirror multi-arch when available.")
 	cmd.Flags().StringSliceVar(&opts.IncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
 	cmd.Flags().StringSliceVar(&opts.ExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
-	cmd.Flags().StringSliceVar(&opts.IncludePatterns, "include", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
-	cmd.Flags().StringSliceVar(&opts.ExcludePatterns, "exclude", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
-	cmd.Flags().BoolVar(&opts.SkipExisting, "skip-existing", false, "Skip mirroring if the target ECR tag already exists")
-	cmd.Flags().IntVar(&opts.MaxConcurrent, "max-concurrent", 3, "Maximum number of concurrent image transfers")
+	cmd.Flags().StringSliceVarP(&opts.IncludePatterns, "include", "i", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().StringSliceVarP(&opts.ExcludePatterns, "exclude", "e", nil, "Exclude images matching these patterns (prefix or regex; if regex compiles, it's used)")
+	cmd.Flags().BoolVarP(&opts.SkipExisting, "skip-existing", "S", false, "Skip mirroring if the target ECR tag already exists")
+	cmd.Flags().IntVarP(&opts.MaxConcurrent, "max-concurrent", "c", 3, "Maximum number of concurrent image transfers")
 
 	return cmd
 }

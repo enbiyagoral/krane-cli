@@ -6,6 +6,7 @@ A lightweight CLI that discovers container images in your Kubernetes cluster and
 - Discovers pod and init container images; optionally shows owning resources (`--show-sources`)
 - Registry-to-registry push to AWS ECR (`crane.Copy`)
   - Preserves multi-arch manifests; restrict to a single platform with `--platform os/arch`
+  - Parallel image processing with configurable concurrency (`--max-concurrent`)
 - Automatically creates ECR repositories (no-op if they already exist)
 - Checks if a target tag exists in ECR and skips (`--skip-existing`)
 - Filters:
@@ -51,53 +52,66 @@ Example IAM policy:
 
 #### List
 ```bash
-krane list [--all-namespaces] [--namespace ns] \
-  [--include PATTERN,...] [--exclude PATTERN,...] \
+krane list [-A|--all-namespaces] [-n|--namespace ns] \
+  [-i|--include PATTERN,...] [-e|--exclude PATTERN,...] \
   [--include-namespaces NS,...] [--exclude-namespaces NS,...] \
-  [--format table|json|yaml] [--show-sources]
+  [-o|--format table|json|yaml] [-s|--show-sources]
 ```
 
 Examples:
 ```bash
 # Entire cluster
-krane list --all-namespaces
+krane list -A
 
 # Only prod namespaces and nginx images
-krane list --include-namespaces "^prod-" --include "nginx"
+krane list --include-namespaces "^prod-" -i "nginx"
 
 # Show owning resources (Deployment/Job/CronJob)
-krane list --all-namespaces --show-sources --format table
+krane list -A -s -o table
+
+# Specific namespace with JSON output
+krane list -n kube-system -o json
+
+# Exclude system images
+krane list -A -e "k8s.gcr.io" -e "registry.k8s.io"
 ```
 
 #### Push (ECR)
 ```bash
-krane push [--all-namespaces | --namespace ns] \
-  --region REGION --prefix PREFIX [--dry-run] [--platform os/arch] \
-  [--skip-existing] \
-  [--include PATTERN,...] [--exclude PATTERN,...] \
+krane push [-A|--all-namespaces | -n|--namespace ns] \
+  [-r|--region REGION] [--prefix PREFIX] [-d|--dry-run] [-p|--platform os/arch] \
+  [-S|--skip-existing] [-c|--max-concurrent N] \
+  [-i|--include PATTERN,...] [-e|--exclude PATTERN,...] \
   [--include-namespaces NS,...] [--exclude-namespaces NS,...]
 ```
 
 Selected flags:
-- `--region`: AWS region (e.g., `eu-west-1`)
-- `--prefix`: prefix for ECR repository names (e.g., `k8s-backup`)
-- `--platform`: copy a single platform (e.g., `linux/amd64`); if empty, multi-arch is preserved
-- `--dry-run`: show what would be pushed without executing
-- `--skip-existing`: skip mirroring when the target ECR tag already exists
-- `--include/--exclude`: image-name filters (regex if compilable, otherwise prefix)
+- `-r|--region`: AWS region (e.g., `eu-west-1`)
+- `--prefix`: prefix for ECR repository names (default: `krane`)
+- `-p|--platform`: copy a single platform (e.g., `linux/amd64`); if empty, multi-arch is preserved
+- `-d|--dry-run`: show what would be pushed without executing
+- `-S|--skip-existing`: skip mirroring when the target ECR tag already exists
+- `-i|--include` / `-e|--exclude`: image-name filters (regex if compilable, otherwise prefix)
 - `--include-namespaces/--exclude-namespaces`: namespace filters (regex/prefix)
+- `-c|--max-concurrent`: number of concurrent image transfers (default: 3)
 
 Examples:
 ```bash
 # Mirror all images to ECR (preserve multi-arch)
-krane push --all-namespaces --region eu-west-1 --prefix k8s-backup
+krane push -A -r eu-west-1
 
-# Only linux/amd64 platform
-krane push --region eu-west-1 --prefix k8s-backup --platform linux/amd64
+# Only linux/amd64 platform with custom prefix
+krane push -r eu-west-1 --prefix k8s-backup -p linux/amd64
 
-# Prod namespaces and selected images (skipping existing tags)
-krane push --include-namespaces "^prod-" --include "(nginx|busybox)" \
-  --region eu-west-1 --prefix k8s-backup --skip-existing
+# Prod namespaces and selected images (skipping existing tags, 5 concurrent workers)
+krane push --include-namespaces "^prod-" -i "(nginx|busybox)" \
+  -r eu-west-1 -S -c 5
+
+# Dry run for specific namespace  
+krane push -n production -r us-east-1 -d
+
+# Exclude system images from all namespaces
+krane push -A -r eu-west-1 -e "k8s.gcr.io" -e "registry.k8s.io"
 ```
 
 ### Troubleshooting
