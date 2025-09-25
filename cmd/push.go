@@ -33,6 +33,39 @@ type PushOptions struct {
 	MaxConcurrent     int
 }
 
+// Validate validates push command options and returns error if invalid.
+func (opts *PushOptions) Validate() error {
+	if opts.MaxConcurrent < 1 || opts.MaxConcurrent > 50 {
+		return fmt.Errorf("max-concurrent must be between 1 and 50, got: %d", opts.MaxConcurrent)
+	}
+	return nil
+}
+
+// ValidateWithCmd validates options with access to cobra command for flag checking.
+func (opts *PushOptions) ValidateWithCmd(cmd *cobra.Command) error {
+	if err := opts.Validate(); err != nil {
+		return err
+	}
+
+	// If platform flag was provided, it cannot be empty
+	if cmd.Flags().Changed("platform") && opts.Platform == "" {
+		return fmt.Errorf("platform flag provided but value is empty")
+	}
+
+	// If platform is provided, validate format
+	if opts.Platform != "" && !isValidPlatform(opts.Platform) {
+		return fmt.Errorf("invalid platform format, expected os/arch: %s", opts.Platform)
+	}
+
+	return nil
+}
+
+// isValidPlatform validates platform format (os/arch).
+func isValidPlatform(platform string) bool {
+	parts := strings.SplitN(platform, "/", 2)
+	return len(parts) == 2 && parts[0] != "" && parts[1] != ""
+}
+
 // ImageJob represents a single image processing job.
 type ImageJob struct {
 	Index       int
@@ -61,6 +94,9 @@ This command discovers images from pods (optionally filtered by namespaces and p
 creates ECR repositories if needed, and performs a registry-to-registry mirror preserving
 multi-arch manifests. Optionally restrict to a single platform with --platform.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := opts.ValidateWithCmd(cmd); err != nil {
+				return err
+			}
 			return runPush(cmd.Context(), opts)
 		},
 	}

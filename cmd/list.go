@@ -30,6 +30,15 @@ type ListOptions struct {
 	ShowSources       bool
 }
 
+// Validate validates list command options and returns error if invalid.
+func (opts *ListOptions) Validate() error {
+	validFormats := map[string]bool{"table": true, "json": true, "yaml": true}
+	if !validFormats[opts.Format] {
+		return fmt.Errorf("invalid format: %s (valid: table, json, yaml)", opts.Format)
+	}
+	return nil
+}
+
 // newListCmd constructs the list command with its own options.
 func newListCmd() *cobra.Command {
 	opts := &ListOptions{Format: "table"}
@@ -59,6 +68,11 @@ the container images including init containers.`,
 
 // runList executes the list command with the given options.
 func runList(ctx context.Context, opts *ListOptions) error {
+	// Validate options first
+	if err := opts.Validate(); err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+
 	// Kubernetes Client
 	client, err := k8s.NewClient("")
 	if err != nil {
