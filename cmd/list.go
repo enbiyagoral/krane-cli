@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ListOptions holds flag values for the list command
+// ListOptions holds flag values for the list command.
 type ListOptions struct {
 	AllNamespaces     bool
 	Namespace         string
@@ -30,7 +30,7 @@ type ListOptions struct {
 	ShowSources       bool
 }
 
-// newListCmd constructs the list command with its own options
+// newListCmd constructs the list command with its own options.
 func newListCmd() *cobra.Command {
 	opts := &ListOptions{Format: "table"}
 	cmd := &cobra.Command{
@@ -57,6 +57,7 @@ the container images including init containers.`,
 	return cmd
 }
 
+// runList executes the list command with the given options.
 func runList(ctx context.Context, opts *ListOptions) error {
 	// Kubernetes Client
 	client, err := k8s.NewClient("")
@@ -147,6 +148,7 @@ func runList(ctx context.Context, opts *ListOptions) error {
 	return nil
 }
 
+// printTable prints images in a simple table format.
 func printTable(images []string) {
 	fmt.Println("CONTAINER IMAGES:")
 	fmt.Println(strings.Repeat("-", 50))
@@ -161,6 +163,7 @@ type GroupedImage struct {
 	Sources []k8s.ImageInfo `json:"sources" yaml:"sources"`
 }
 
+// groupSourcesByImage groups image source information by image name.
 func groupSourcesByImage(infos []k8s.ImageInfo, allowedImages []string) []GroupedImage {
 	allow := map[string]bool{}
 	for _, img := range allowedImages {
@@ -180,6 +183,7 @@ func groupSourcesByImage(infos []k8s.ImageInfo, allowedImages []string) []Groupe
 	return out
 }
 
+// printTableGrouped prints grouped images with their source information.
 func printTableGrouped(grouped []GroupedImage) {
 	fmt.Println("CONTAINER IMAGES (GROUPED):")
 	fmt.Println(strings.Repeat("-", 80))
@@ -201,12 +205,13 @@ func printTableGrouped(grouped []GroupedImage) {
 	fmt.Printf("\nTotal: %d unique images\n", len(grouped))
 }
 
-// ImageList represents the structure for JSON output
+// ImageList represents the structure for JSON output.
 type ImageList struct {
 	Images []string `json:"images"`
 	Total  int      `json:"total"`
 }
 
+// printJSON prints images in JSON format.
 func printJSON(images []string) {
 	imageList := ImageList{
 		Images: images,
@@ -227,6 +232,7 @@ type GroupedImageList struct {
 	Total  int            `json:"total"`
 }
 
+// printJSONGrouped prints grouped images in JSON format.
 func printJSONGrouped(grouped []GroupedImage) {
 	payload := GroupedImageList{Images: grouped, Total: len(grouped)}
 	data, err := json.MarshalIndent(payload, "", "  ")
@@ -237,6 +243,7 @@ func printJSONGrouped(grouped []GroupedImage) {
 	fmt.Println(string(data))
 }
 
+// printYAML prints images in YAML format.
 func printYAML(images []string) {
 	imageList := ImageList{
 		Images: images,
@@ -252,6 +259,7 @@ func printYAML(images []string) {
 	fmt.Println(string(yamlData))
 }
 
+// printYAMLGrouped prints grouped images in YAML format.
 func printYAMLGrouped(grouped []GroupedImage) {
 	payload := GroupedImageList{Images: grouped, Total: len(grouped)}
 	data, err := yaml.Marshal(payload)

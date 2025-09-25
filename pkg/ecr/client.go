@@ -45,7 +45,7 @@ func NewClient(region string) (*Client, error) {
 	}, nil
 }
 
-// validateECRRepositoryName validates ECR repository name according to AWS rules
+// validateECRRepositoryName validates ECR repository name according to AWS naming rules.
 func validateECRRepositoryName(name string) error {
 	// ECR repository name must match: (?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*
 	pattern := `^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*$`
@@ -59,10 +59,12 @@ func validateECRRepositoryName(name string) error {
 	return nil
 }
 
+// GetRegistryURL returns the ECR registry URL for this account and region.
 func (c *Client) GetRegistryURL() string {
 	return fmt.Sprintf("%s.dkr.ecr.%s.amazonaws.com", c.accountID, c.region)
 }
 
+// GetAuthToken retrieves ECR authentication credentials for Docker operations.
 func (c *Client) GetAuthToken(ctx context.Context) (string, string, error) {
 	input := &ecr.GetAuthorizationTokenInput{}
 	result, err := c.ecrClient.GetAuthorizationToken(ctx, input)
@@ -88,6 +90,7 @@ func (c *Client) GetAuthToken(ctx context.Context) (string, string, error) {
 	return parts[0], parts[1], nil // username, password
 }
 
+// CreateRepository creates an ECR repository if it doesn't already exist.
 func (c *Client) CreateRepository(ctx context.Context, repositoryName string) error {
 	input := &ecr.CreateRepositoryInput{
 		RepositoryName: aws.String(repositoryName),
@@ -107,11 +110,12 @@ func (c *Client) CreateRepository(ctx context.Context, repositoryName string) er
 	return nil
 }
 
+// ConvertImageName converts source image name to ECR-compatible format with prefix.
 func (c *Client) ConvertImageName(originalImage, prefix string) (string, string, error) {
 	// Examples:
-	// registry.k8s.io/ingress-nginx/controller:v1.12.3@sha256:abcdef -> k8s-backup/ingress-nginx/controller:v1.12.3
-	// docker.io/library/busybox@sha256:abcdef -> k8s-backup/library/busybox:sha-abcdef
-	// busybox:1.37 -> k8s-backup/busybox:1.37
+	// registry.k8s.io/ingress-nginx/controller:v1.12.3@sha256:abcdef -> krane/ingress-nginx/controller:v1.12.3
+	// docker.io/library/busybox@sha256:abcdef -> krane/library/busybox:sha-abcdef
+	// busybox:1.37 -> krane/busybox:1.37
 
 	image := originalImage
 	var digest string
@@ -191,7 +195,7 @@ func (c *Client) ConvertImageName(originalImage, prefix string) (string, string,
 	return ecrImage, fullRepoName, nil
 }
 
-// ImageTagExists checks whether a tag exists in the given ECR repository
+// ImageTagExists checks whether a specific tag exists in the given ECR repository.
 func (c *Client) ImageTagExists(ctx context.Context, repositoryName, tag string) (bool, error) {
 	input := &ecr.DescribeImagesInput{
 		RepositoryName: aws.String(repositoryName),
@@ -202,6 +206,10 @@ func (c *Client) ImageTagExists(ctx context.Context, repositoryName, tag string)
 	if err != nil {
 		var rnfe *ecrtypes.RepositoryNotFoundException
 		if errors.As(err, &rnfe) {
+			return false, nil
+		}
+		var infe *ecrtypes.ImageNotFoundException
+		if errors.As(err, &infe) {
 			return false, nil
 		}
 		return false, err
