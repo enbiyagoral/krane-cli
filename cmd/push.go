@@ -94,6 +94,11 @@ This command discovers images from pods (optionally filtered by namespaces and p
 creates ECR repositories if needed, and performs a registry-to-registry mirror preserving
 multi-arch manifests. Optionally restrict to a single platform with --platform.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Namespace = globalNamespace
+			opts.AllNamespaces = globalAllNamespaces
+			if globalRegion != "" {
+				opts.Region = globalRegion
+			}
 			if err := opts.ValidateWithCmd(cmd); err != nil {
 				return err
 			}
@@ -101,10 +106,8 @@ multi-arch manifests. Optionally restrict to a single platform with --platform.`
 		},
 	}
 
-	cmd.Flags().BoolVarP(&opts.AllNamespaces, "all-namespaces", "A", false, "List images from all namespaces")
-	cmd.Flags().StringVarP(&opts.Region, "region", "r", "eu-west-1", "AWS region for ECR")
+	// Global flags --namespace/-n, --all-namespaces/-A, --region/-r artık root seviyede
 	cmd.Flags().StringVar(&opts.RepositoryPrefix, "prefix", "krane", "ECR repository prefix/namespace")
-	cmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "", "Kubernetes namespace to filter (default: all)")
 	cmd.Flags().BoolVarP(&opts.DryRun, "dry-run", "d", false, "Show what would be pushed without actually pushing")
 	cmd.Flags().StringVarP(&opts.Platform, "platform", "p", "", "Limit mirror to a single platform (e.g. linux/amd64). If empty, mirror multi-arch when available.")
 	cmd.Flags().StringSliceVar(&opts.IncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")

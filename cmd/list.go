@@ -50,13 +50,17 @@ func newListCmd() *cobra.Command {
 This command scans all pods (or specified namespace) and extracts
 the container images including init containers.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Pull effective values from global persistent flags
+			opts.Namespace = globalNamespace
+			opts.AllNamespaces = globalAllNamespaces
+			if globalOutput != "" {
+				opts.Format = globalOutput
+			}
 			return runList(cmd.Context(), opts)
 		},
 	}
 
-	cmd.Flags().BoolVarP(&opts.AllNamespaces, "all-namespaces", "A", false, "List images from all namespaces")
-	cmd.Flags().StringVarP(&opts.Namespace, "namespace", "n", "", "Kubernetes namespace to filter (default: all)")
-	cmd.Flags().StringVarP(&opts.Format, "format", "o", "table", "Output format (table, json, yaml)")
+	// Global flags --namespace/-n, --all-namespaces/-A, --output/-o artık root seviyede
 	cmd.Flags().StringSliceVar(&opts.IncludeNamespaces, "include-namespaces", nil, "Only include these namespaces (prefix or regex; if regex compiles, it's used)")
 	cmd.Flags().StringSliceVar(&opts.ExcludeNamespaces, "exclude-namespaces", nil, "Exclude these namespaces (prefix or regex; if regex compiles, it's used)")
 	cmd.Flags().StringSliceVarP(&opts.IncludePatterns, "include", "i", nil, "Only include images matching these patterns (prefix or regex; if regex compiles, it's used)")

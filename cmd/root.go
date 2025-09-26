@@ -10,6 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Global persistent flags (available to all subcommands)
+var (
+	globalNamespace     string
+	globalAllNamespaces bool
+	globalRegion        string
+	globalOutput        string
+)
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "krane",
@@ -45,6 +53,12 @@ func Execute() {
 }
 
 func init() {
+	// Persistent global flags
+	rootCmd.PersistentFlags().StringVarP(&globalNamespace, "namespace", "n", "", "Kubernetes namespace to use (default: all)")
+	rootCmd.PersistentFlags().BoolVarP(&globalAllNamespaces, "all-namespaces", "A", false, "If true, use all namespaces")
+	rootCmd.PersistentFlags().StringVarP(&globalRegion, "region", "r", "eu-west-1", "AWS region for ECR")
+	rootCmd.PersistentFlags().StringVarP(&globalOutput, "output", "o", "table", "Global output format (table, json, yaml)")
+
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newPushCmd())
 }
