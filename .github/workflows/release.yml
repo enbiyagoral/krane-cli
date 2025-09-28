@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 1.25.1
+
+    - name: Get version
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Build binaries
+      run: |
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o krane-linux-amd64 main.go
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o krane-darwin-amd64 main.go
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o krane-darwin-arm64 main.go
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o krane-windows-amd64.exe main.go
+
+    - name: Create checksums
+      run: |
+        sha256sum krane-* > checksums.txt
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          krane-linux-amd64
+          krane-darwin-amd64
+          krane-darwin-arm64
+          krane-windows-amd64.exe
+          checksums.txt
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: enbiyagoral/homebrew-krane
+        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+    - name: Get version
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Get SHA256
+      id: sha256
+      run: |
+        SHA256=$(curl -sL https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.version.outputs.VERSION }}.tar.gz | shasum -a 256 | cut -d' ' -f1)
+        echo "SHA256=$SHA256" >> $GITHUB_OUTPUT
+
+    - name: Update formula
+      run: |
+        VERSION=${{ steps.version.outputs.VERSION }}
+        SHA256=${{ steps.sha256.outputs.SHA256 }}
+        
+        # Update version and sha256 in formula
+        sed -i "s|url \".*\"|url \"https://github.com/${{ github.repository }}/archive/refs/tags/${VERSION}.tar.gz\"|" Formula/krane.rb
+        sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/krane.rb
+
+    - name: Commit and push
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add Formula/krane.rb
+        git commit -m "Update krane to ${{ steps.version.outputs.VERSION }}"
+        git push
