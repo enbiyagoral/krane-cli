@@ -10,14 +10,6 @@ brew tap enbiyagoral/krane
 brew install enbiyagoral/krane/krane
 ```
 
-#### Manual Installation
-```bash
-# Download the latest release
-curl -L https://github.com/enbiyagoral/krane-cli/releases/latest/download/krane-$(uname -s)-$(uname -m) -o krane
-chmod +x krane
-sudo mv krane /usr/local/bin/
-```
-
 ### Features
 - Discovers pod and init container images; optionally shows owning resources (`--show-sources`)
 - Registry-to-registry push to AWS ECR (`crane.Copy`)
