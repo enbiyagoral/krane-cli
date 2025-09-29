@@ -7,7 +7,7 @@ A lightweight CLI that discovers container images in your Kubernetes cluster and
 #### Homebrew (Recommended)
 ```bash
 brew tap enbiyagoral/krane
-brew install krane
+brew install enbiyagoral/krane/krane
 ```
 
 #### Manual Installation
